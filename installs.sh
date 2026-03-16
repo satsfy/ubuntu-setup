@@ -30,7 +30,12 @@ sudo apt install -y\
     calibre\
     vlc\
     gcc\
-    make
+    docker-compose-plugin\
+    make\
+    xclip
 
 sudo snap install --classic \
     obsidian 
+
+echo "alias pbcopy=\"xclip -selection clipboard\"" >> ~/.bashrc
+echo "alias pbpaste=\"xclip -selection clipboard -o\"" >> ~/.bashrc
