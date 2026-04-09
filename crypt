@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# -lt 1 ]]; then
+    echo "Error: Missing key below. Usage: $0 <KEY> (-d or -e) <DIR>"
+    gpg --list-keys
+    echo "Error: Missing key above. Usage: $0 <KEY> (-d or -e) <DIR>"
+    exit 1
+fi
+
+KEY="$1"
+
+if [[ $# -lt 2 ]]; then
+    echo "Error: Usage: $0 <KEY> (-d or -e) [<DIR>]  "
+    exit 1
+fi
+
+FLAG="${2:-}"
+FILE="encrypted_filesystem.tar.gz.gpg"
+
+if [[ -z "$FLAG" ]]; then
+    echo "Error: FLAG argument is missing. Usage: $0 <KEY> (-d or -e) <DIR>"
+    exit 1
+fi
+
+if [[ "$FLAG" == "-d" ]]; then
+    if [[ $# -lt 2 ]]; then
+        echo "Error: Missing dir. Usage: $0 <KEY> (-d or -e) <DIR>"
+        gpg --list-keys
+        exit 1
+    fi
+
+    IN=$FILE
+    OUT="."
+    if [[ ! -f "$IN" ]]; then
+        echo "Error: Encrypted file '$IN' not found."
+        exit 1
+    fi
+    gpg -d -r "$KEY" "$IN" | tar -xzf - -C "$OUT"
+    echo "→ Decrypted to $OUT"
+    exit 0
+fi
+
+
+if [[ "$FLAG" == "-e" ]]; then
+
+    if [[ $# -lt 2 ]]; then
+        echo "Error: Missing directory. Usage: $0 (-d or -e) <DIR> <KEY> "
+        exit 1
+    fi
+
+    DIR="$3"
+    OUT=$FILE
+
+    if ! gpg --list-keys "$KEY" >/dev/null 2>&1; then
+        echo "Error: GPG key '$KEY' not found."
+        gpg --list-keys
+        exit 1
+    fi
+
+    tar -czf - "$DIR" | gpg -e -r "$KEY" > "$OUT"
+
+    rm -rf "$DIR"
+
+    echo "→ $OUT"
+    exit 0
+fi
+
+
+
+echo "Error: Invalid FLAG argument '$FLAG'. Usage: $0 <DIR> <KEY> [-d|-e]"
+exit 1
+
+if [[ $# -lt 2 ]]; then
+    echo "Error: KEY argument is missing. Usage: $0 (-d or -e) <DIR> <KEY> "
+    gpg --list-keys
+    exit 1
+fi
+

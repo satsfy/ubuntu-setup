@@ -37,3 +37,4 @@ sudo apt install -y\
 sudo snap install --classic \
     obsidian 
 
+curl https://raw.githubusercontent.com/nektos/act/master/install.sh | sudo bash

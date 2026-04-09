@@ -1,3 +1,9 @@
+# install the bashrc
+
+echo "source /home/renato/Desktop/ubuntu-setup/.bashrc" >> ~/.bashrc
+
+# ===========================
+
 # vscode as default text editor
 xdg-mime default visual-studio-code.desktop text/plain
 xdg-mime default code.desktop text/markdown

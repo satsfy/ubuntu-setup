@@ -1,7 +1,11 @@
-export btcn1ip="<TODO: secret>"
-export btcn1port="80"
-export btcn1user="<TODO: secret>"
-export btcn1password="<TODO: secret>"
+[ -f /home/renato/Desktop/ubuntu-setup/secrets/.bashrc ] && source /home/renato/Desktop/ubuntu-setup/secrets/.bashrc
+
+. "$HOME/.cargo/env"
+export PATH=/usr/local/go/bin:$HOME/go/bin:$PATH
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+
 alias btcn1="bitcoin-cli -rpcconnect=$btcn1ip -rpcport=$btcn1port -rpcuser=$btcn1user -rpcpassword=$btcn1password"
 
 alias pbcopy="xclip -selection clipboard"
@@ -43,6 +47,7 @@ gh-get-hist() {
 
     for candidate in "${candidates[@]}"; do
       if git show-ref --verify --quiet "refs/remotes/$candidate"; then
+        echo "Using $candidate as base ref." >&2
         base="$candidate"
         break
       fi
@@ -60,4 +65,3 @@ gh-get-hist() {
 gh-get-folder-diff() {
     git diff --no-index "$(mktemp -d)" $1
 }
-

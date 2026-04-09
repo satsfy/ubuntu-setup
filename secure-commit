@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_FILE="$REPO_ROOT/repo-secrets-config.sh"
+CRYPT_SCRIPT="$REPO_ROOT/crypt"
+
+if [[ ! -f "$CONFIG_FILE" ]]; then
+    echo "Error: Missing config file: $CONFIG_FILE" >&2
+    exit 1
+fi
+
+if [[ ! -x "$CRYPT_SCRIPT" ]]; then
+    echo "Error: Missing executable crypt script: $CRYPT_SCRIPT" >&2
+    exit 1
+fi
+
+# shellcheck source=/dev/null
+source "$CONFIG_FILE"
+
+KEY_ID="${UBUNTU_SETUP_GPG_KEY_ID:-}"
+SECRETS_DIR="${UBUNTU_SETUP_SECRETS_DIR:-secrets}"
+ENCRYPTED_ARCHIVE="${UBUNTU_SETUP_ENCRYPTED_ARCHIVE:-encrypted_filesystem.tar.gz.gpg}"
+
+if [[ -z "$KEY_ID" ]]; then
+    echo "Error: UBUNTU_SETUP_GPG_KEY_ID is empty in $CONFIG_FILE" >&2
+    exit 1
+fi
+
+encrypted_this_run=0
+
+decrypt_if_needed() {
+    if [[ "$encrypted_this_run" -eq 1 ]]; then
+        echo "Restoring '$SECRETS_DIR' from '$ENCRYPTED_ARCHIVE'..."
+        "$CRYPT_SCRIPT" "$KEY_ID" -d >/dev/null
+        echo "Secrets restored."
+    fi
+}
+
+cleanup() {
+    local exit_code="$1"
+    if ! decrypt_if_needed; then
+        echo "Warning: automatic decrypt failed. You can restore manually with:" >&2
+        echo "  ./crypt \"$KEY_ID\" -d" >&2
+    fi
+    exit "$exit_code"
+}
+
+if [[ -d "$REPO_ROOT/$SECRETS_DIR" ]]; then
+    echo "Encrypting '$SECRETS_DIR' before commit..."
+    "$CRYPT_SCRIPT" "$KEY_ID" -e "$SECRETS_DIR" >/dev/null
+    git -C "$REPO_ROOT" add -- "$ENCRYPTED_ARCHIVE"
+    encrypted_this_run=1
+    echo "Encrypted and staged '$ENCRYPTED_ARCHIVE'."
+    git add encrypted_filesystem.tar.gz.gpg
+else
+    echo "Directory '$SECRETS_DIR' not present. Skipping encryption step."
+fi
+
+set +e
+git -C "$REPO_ROOT" commit "$@"
+commit_exit_code=$?
+set -e
+
+# cleanup "$commit_exit_code"
