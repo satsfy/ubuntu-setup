@@ -6,8 +6,6 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
 
-alias btcn1="bitcoin-cli -rpcconnect=$btcn1ip -rpcport=$btcn1port -rpcuser=$btcn1user -rpcpassword=$btcn1password"
-
 alias pbcopy="xclip -selection clipboard"
 alias pbpaste="xclip -selection clipboard -o"
 
