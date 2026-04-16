@@ -24,6 +24,9 @@ git config --global user.name "Renato Britto"
 git config --global user.email "renatobritto@protonmail.com"
 git config --global init.defaultBranch master
 git config --global pull.rebase true
+git config --global diff.tool vscode
+git config --global difftool.vscode.cmd 'code --wait --diff "$LOCAL" "$REMOTE"'
+git config --global difftool.prompt false
 
 # ===========================
 

@@ -37,4 +37,9 @@ sudo apt install -y\
 sudo snap install --classic \
     obsidian 
 
-curl https://raw.githubusercontent.com/nektos/act/master/install.sh | sudo bash
+# Install act
+cd /tmp
+wget https://github.com/nektos/act/releases/latest/download/act_Linux_x86_64.tar.gz
+tar -xzf act_Linux_x86_64.tar.gz
+sudo mv act /usr/local/bin/act
+act --version
