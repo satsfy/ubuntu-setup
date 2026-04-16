@@ -182,3 +182,33 @@ gh-checkpoint() {
   oid=$(git stash create "$name")
   git stash store -m "$name" "$oid"
 }
+
+move_to_remote() {
+  local remote=$DEV_SERVER
+  local reponame=$(basename "$(git rev-parse --show-toplevel)")
+  local remote_dir="/home/renato/.openclaw/workspace/$reponame"
+  local script_dir="${1:-$PWD}"
+
+  script_dir="$(cd -- "$script_dir" && pwd)"
+
+  if ! command -v rsync >/dev/null 2>&1; then
+    echo "error: rsync is required" >&2
+    return 1
+  fi
+
+  if ! command -v ssh >/dev/null 2>&1; then
+    echo "error: ssh is required" >&2
+    return 1
+  fi
+
+  ssh "$remote" "mkdir -p '$remote_dir'" || return 1
+
+  rsync -az --itemize-changes \
+    # --exclude '.git/' \
+    --exclude 'target/' \
+    --exclude 'mutants.out/' \
+    --exclude 'mutants.out.old/' \
+    "$script_dir/" "$remote:$remote_dir/" || return 1
+
+  echo "Copy complete: $script_dir -> $remote:$remote_dir"
+}

@@ -62,4 +62,4 @@ git -C "$REPO_ROOT" commit "$@"
 commit_exit_code=$?
 set -e
 
-# cleanup "$commit_exit_code"
+cleanup "$commit_exit_code"
