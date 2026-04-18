@@ -71,7 +71,7 @@ act-logs() {
 ci() {
   local output_dir="."
   local save_log="1"
-  local workflow=".github/workflows/rust.yml"
+  local workflow="all"
   local event="pull_request"
   local jobs="1"
   local log_file=""
@@ -111,15 +111,16 @@ Usage: ci [options] [-- <extra act args>]
 Run act for rust CI with optional log saving.
 
 Options:
-  -o, --output-dir DIR   Folder where log file is saved (default: .)
-  -q, --no-log-file      Do not save run output to a log file
-  -w, --workflow PATH    Workflow file (default: .github/workflows/rust.yml)
-  -e, --event EVENT      Event name (default: pull_request)
-  -j, --jobs N           Concurrent jobs for act (default: 1)
-  -h, --help             Show this help
+  -o, --output-dir DIR    Folder where log file is saved (default: .)
+  -q, --no-log-file       Do not save run output to a log file
+  -w, --workflow PATTERN  Workflow file or "all" for all workflows (default: all)
+  -e, --event EVENT       Event name (default: pull_request)
+  -j, --jobs N            Concurrent jobs for act (default: 1)
+  -h, --help              Show this help
 
 Examples:
-  ci
+  ci                           # Run all workflows
+  ci -w rust.yaml              # Run specific workflow
   ci -o .act-logs
   ci -q
   ci -o .act-logs -- -n
@@ -142,27 +143,71 @@ EOF
 
   output_dir="${output_dir/#\~/$HOME}"
 
-  if [ "$save_log" = "1" ]; then
-    mkdir -p "$output_dir" || return 1
-    log_file="$output_dir/ci-$(date +%F_%H-%M-%S).log"
+  if [ "$workflow" = "all" ]; then
+    # Find all workflow files and run them
+    local -a workflows
+    mapfile -t workflows < <(find .github/workflows -maxdepth 1 -type f \( -name "*.yml" -o -name "*.yaml" \) | grep -v README | sort)
+    
+    if [ ${#workflows[@]} -eq 0 ]; then
+      echo "ci: no workflow files found in .github/workflows" >&2
+      return 1
+    fi
+
+    for wf in "${workflows[@]}"; do
+      echo "========================================"
+      echo "Running workflow: $wf"
+      echo "========================================"
+      
+      if [ "$save_log" = "1" ]; then
+        mkdir -p "$output_dir" || return 1
+        log_file="$output_dir/ci-$(basename "$wf" | sed 's/\.[^.]*$//;s/-/_/g')-$(date +%F_%H-%M-%S).log"
+
+        act "$event" -W "$wf" \
+          --pull=false \
+          --concurrent-jobs "$jobs" \
+          --log-prefix-job-id \
+          "${act_args[@]}" \
+          2>&1 | tee "$log_file"
+
+        status="${PIPESTATUS[0]}"
+        echo "saved log: $log_file"
+        [ $status -ne 0 ] && echo "⚠ Workflow failed with status $status"
+      else
+        act "$event" -W "$wf" \
+          --pull=false \
+          --concurrent-jobs "$jobs" \
+          --log-prefix-job-id \
+          "${act_args[@]}"
+        
+        status=$?
+        [ $status -ne 0 ] && echo "⚠ Workflow failed with status $status"
+      fi
+    done
+    return 0
+  else
+    # Run single workflow
+    if [ "$save_log" = "1" ]; then
+      mkdir -p "$output_dir" || return 1
+      log_file="$output_dir/ci-$(date +%F_%H-%M-%S).log"
+
+      act "$event" -W "$workflow" \
+        --pull=false \
+        --concurrent-jobs "$jobs" \
+        --log-prefix-job-id \
+        "${act_args[@]}" \
+        2>&1 | tee "$log_file"
+
+      status="${PIPESTATUS[0]}"
+      echo "saved log: $log_file"
+      return "$status"
+    fi
 
     act "$event" -W "$workflow" \
       --pull=false \
       --concurrent-jobs "$jobs" \
       --log-prefix-job-id \
-      "${act_args[@]}" \
-      2>&1 | tee "$log_file"
-
-    status="${PIPESTATUS[0]}"
-    echo "saved log: $log_file"
-    return "$status"
+      "${act_args[@]}"
   fi
-
-  act "$event" -W "$workflow" \
-    --pull=false \
-    --concurrent-jobs "$jobs" \
-    --log-prefix-job-id \
-    "${act_args[@]}"
 }
 
 gh-cmp-stashes(){
@@ -201,14 +246,47 @@ move_to_remote() {
     return 1
   fi
 
-  ssh "$remote" "mkdir -p '$remote_dir'" || return 1
+  sshpass -e ssh -T "$remote" "mkdir -p '$remote_dir'" || return 1
 
-  rsync -az --itemize-changes \
     # --exclude '.git/' \
+  sshpass -e rsync -az --itemize-changes \
     --exclude 'target/' \
     --exclude 'mutants.out/' \
     --exclude 'mutants.out.old/' \
     "$script_dir/" "$remote:$remote_dir/" || return 1
 
   echo "Copy complete: $script_dir -> $remote:$remote_dir"
+}
+
+move_from_remote() {
+  local remote=$DEV_SERVER
+  local reponame=$(basename "$(git rev-parse --show-toplevel)")
+  local remote_dir="/home/renato/.openclaw/workspace/$reponame"
+  local script_dir="${1:-$PWD}"
+
+  if ! command -v rsync >/dev/null 2>&1; then
+    echo "error: rsync is required" >&2
+    return 1
+  fi
+
+  if ! command -v ssh >/dev/null 2>&1; then
+    echo "error: ssh is required" >&2
+    return 1
+  fi
+
+  mkdir -p -- "$script_dir" || return 1
+  script_dir="$(cd -- "$script_dir" && pwd)"
+
+  sshpass -e ssh -T "$remote" "test -d '$remote_dir'" || {
+    echo "error: remote directory not found: $remote:$remote_dir" >&2
+    return 1
+  }
+
+  sshpass -e rsync -az --itemize-changes \
+    --exclude 'target/' \
+    --exclude 'mutants.out/' \
+    --exclude 'mutants.out.old/' \
+    "$remote:$remote_dir/" "$script_dir/" || return 1
+
+  echo "Copy complete: $remote:$remote_dir -> $script_dir"
 }
