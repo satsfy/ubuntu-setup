@@ -13,13 +13,19 @@ gh-branch() {
   local input="$1" repo_url pr_number branch target
 
   [ -z "$input" ] && {
-    echo "usage: gh-branch <.../pull/N or .../tree/branch>" >&2
+    echo "usage: gh-branch <.../pull/N or .../pulls/N or .../tree/branch>" >&2
     return 1
   }
 
-  repo_url=$(printf '%s\n' "$input" | sed 's|/pull/.*||; s|/tree/.*||; s|\.git$||')
+  repo_url=$(printf '%s\n' "$input" | sed 's|/pulls/.*||; s|/pull/.*||; s|/tree/.*||; s|\.git$||')
 
-  if [[ "$input" == *"/pull/"* ]]; then
+  if [[ "$input" == *"/pulls/"* ]]; then
+    # Gitea style: /pulls/N — fetch ref differs, try refs/pull/N/head
+    pr_number=$(printf '%s\n' "$input" | sed -E 's|.*/pulls/([0-9]+).*|\1|')
+    target="pr-$pr_number"
+    git fetch "$repo_url" "refs/pull/$pr_number/head" || return
+    git switch -C "$target" FETCH_HEAD
+  elif [[ "$input" == *"/pull/"* ]]; then
     pr_number=$(printf '%s\n' "$input" | sed -E 's|.*/pull/([0-9]+).*|\1|')
     target="pr-$pr_number"
     git fetch "$repo_url" "pull/$pr_number/head" || return
