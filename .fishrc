@@ -359,19 +359,52 @@ if type -q aichat
 end
 
 function find_in_changes
-    if test (count $argv) -lt 1
-        echo "usage: find_in_changes <pattern>" >&2
+    set -l mode both
+    set -l pattern
+
+    switch "$argv[1]"
+        case -a --added
+            set mode added
+            set pattern "$argv[2]"
+        case -r --removed
+            set mode removed
+            set pattern "$argv[2]"
+        case '*'
+            set pattern "$argv[1]"
+    end
+
+    if test -z "$pattern"
+        echo "usage: find_in_changes [-a|--added|-r|--removed] <pattern>" >&2
         return 1
     end
 
-    set -l pattern "$argv[1]"
-    git diff --no-prefix \
-    | awk -v pat="$pattern" '
+    begin
+        git diff --no-prefix
+        git diff --cached --no-prefix
+    end \
+    | awk -v pat="$pattern" -v mode="$mode" '
         /^diff --git / { file=$4; sub(/^b\//, "", file); next }
-        /^@@/ { next }
+        /^@@/ {
+            if (match($0, /^@@ -([0-9]+)(,[0-9]+)? \+([0-9]+)(,[0-9]+)? @@/, m)) {
+                old_line = m[1]
+                new_line = m[3]
+            }
+            next
+        }
+        /^ / { old_line++; new_line++; next }
         /^[+-]/ {
-            if ($0 ~ pat) {
-                print file ": " $0
+            if ($0 ~ pat &&
+                ((mode == "added" && $0 ~ /^\+/) ||
+                 (mode == "removed" && $0 ~ /^-/) ||
+                 (mode == "both"))) {
+                line = ($0 ~ /^\+/) ? new_line : old_line
+                print file ":" line ": " $0
+            }
+
+            if ($0 ~ /^\+/) {
+                new_line++
+            } else if ($0 ~ /^-/) {
+                old_line++
             }
         }
     '
