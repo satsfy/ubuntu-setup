@@ -3,8 +3,8 @@
 . "$HOME/.cargo/env"
 export PATH=/usr/local/go/bin:$HOME/go/bin:$PATH
 export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
-[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"                   # This loads nvm
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion" # This loads nvm bash_completion
 
 alias pbcopy="xclip -selection clipboard"
 alias pbpaste="xclip -selection clipboard -o"
@@ -67,11 +67,11 @@ gh-get-hist() {
 }
 
 gh-get-folder-diff() {
-    git diff --no-index "$(mktemp -d)" $1
+  git diff --no-index "$(mktemp -d)" $1
 }
 
 act-logs() {
-	act -W .github/workflows/rust.yaml --pull=false --concurrent-jobs 3 --json | jq -r '.message'
+  act -W .github/workflows/rust.yaml --pull=false --concurrent-jobs 3 --json | jq -r '.message'
 }
 
 ci() {
@@ -86,32 +86,44 @@ ci() {
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      -o|--output-dir)
-        [ -n "$2" ] || { echo "ci: missing value for $1" >&2; return 2; }
-        output_dir="$2"
-        shift 2
-        ;;
-      -q|--no-log-file)
-        save_log="0"
-        shift
-        ;;
-      -w|--workflow)
-        [ -n "$2" ] || { echo "ci: missing value for $1" >&2; return 2; }
-        workflow="$2"
-        shift 2
-        ;;
-      -e|--event)
-        [ -n "$2" ] || { echo "ci: missing value for $1" >&2; return 2; }
-        event="$2"
-        shift 2
-        ;;
-      -j|--jobs)
-        [ -n "$2" ] || { echo "ci: missing value for $1" >&2; return 2; }
-        jobs="$2"
-        shift 2
-        ;;
-      -h|--help)
-        cat <<'EOF'
+    -o | --output-dir)
+      [ -n "$2" ] || {
+        echo "ci: missing value for $1" >&2
+        return 2
+      }
+      output_dir="$2"
+      shift 2
+      ;;
+    -q | --no-log-file)
+      save_log="0"
+      shift
+      ;;
+    -w | --workflow)
+      [ -n "$2" ] || {
+        echo "ci: missing value for $1" >&2
+        return 2
+      }
+      workflow="$2"
+      shift 2
+      ;;
+    -e | --event)
+      [ -n "$2" ] || {
+        echo "ci: missing value for $1" >&2
+        return 2
+      }
+      event="$2"
+      shift 2
+      ;;
+    -j | --jobs)
+      [ -n "$2" ] || {
+        echo "ci: missing value for $1" >&2
+        return 2
+      }
+      jobs="$2"
+      shift 2
+      ;;
+    -h | --help)
+      cat <<'EOF'
 Usage: ci [options] [-- <extra act args>]
 
 Run act for rust CI with optional log saving.
@@ -131,19 +143,19 @@ Examples:
   ci -q
   ci -o .act-logs -- -n
 EOF
-        return 0
-        ;;
-      --)
-        shift
-        while [ "$#" -gt 0 ]; do
-          act_args+=("$1")
-          shift
-        done
-        ;;
-      *)
+      return 0
+      ;;
+    --)
+      shift
+      while [ "$#" -gt 0 ]; do
         act_args+=("$1")
         shift
-        ;;
+      done
+      ;;
+    *)
+      act_args+=("$1")
+      shift
+      ;;
     esac
   done
 
@@ -153,7 +165,7 @@ EOF
     # Find all workflow files and run them
     local -a workflows
     mapfile -t workflows < <(find .github/workflows -maxdepth 1 -type f \( -name "*.yml" -o -name "*.yaml" \) | grep -v README | sort)
-    
+
     if [ ${#workflows[@]} -eq 0 ]; then
       echo "ci: no workflow files found in .github/workflows" >&2
       return 1
@@ -163,7 +175,7 @@ EOF
       echo "========================================"
       echo "Running workflow: $wf"
       echo "========================================"
-      
+
       if [ "$save_log" = "1" ]; then
         mkdir -p "$output_dir" || return 1
         log_file="$output_dir/ci-$(basename "$wf" | sed 's/\.[^.]*$//;s/-/_/g')-$(date +%F_%H-%M-%S).log"
@@ -184,7 +196,7 @@ EOF
           --concurrent-jobs "$jobs" \
           --log-prefix-job-id \
           "${act_args[@]}"
-        
+
         status=$?
         [ $status -ne 0 ] && echo "⚠ Workflow failed with status $status"
       fi
@@ -216,15 +228,15 @@ EOF
   fi
 }
 
-gh-cmp-stashes(){
-  git show stash@{0}:src/primitives/correction.rs > /tmp/corr0.rs
-  git show stash@{2}:src/primitives/correction.rs > /tmp/corr1.rs
+gh-cmp-stashes() {
+  git show stash@{0}:src/primitives/correction.rs >/tmp/corr0.rs
+  git show stash@{2}:src/primitives/correction.rs >/tmp/corr1.rs
   code --diff /tmp/corr0.rs /tmp/corr1.rs
 }
 
-gh-cmp-commits(){
-  git show stash@{0}:src/primitives/correction.rs > /tmp/corr0.rs
-  git show stash@{2}:src/primitives/correction.rs > /tmp/corr1.rs
+gh-cmp-commits() {
+  git show stash@{0}:src/primitives/correction.rs >/tmp/corr0.rs
+  git show stash@{2}:src/primitives/correction.rs >/tmp/corr1.rs
   code --diff /tmp/corr0.rs /tmp/corr1.rs
 }
 
@@ -254,7 +266,7 @@ move_to_remote() {
 
   sshpass -e ssh -T "$remote" "mkdir -p '$remote_dir'" || return 1
 
-    # --exclude '.git/' \
+  # --exclude '.git/' \
   sshpass -e rsync -az --itemize-changes \
     --exclude 'target/' \
     --exclude 'mutants.out/' \
@@ -296,3 +308,5 @@ move_from_remote() {
 
   echo "Copy complete: $remote:$remote_dir -> $script_dir"
 }
+
+alias push="git add .; git commit -m \"$(date)\"; git push origin master || git push origin main"
