@@ -32,7 +32,10 @@ sudo apt install -y\
     gcc\
     docker-compose-plugin\
     make\
-    xclip
+    xclip\
+    fish\
+    fzf\
+    tree
 
 sudo snap install --classic \
     obsidian 

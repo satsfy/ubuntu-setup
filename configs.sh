@@ -2,6 +2,16 @@
 
 echo "source /home/renato/Desktop/ubuntu-setup/.bashrc" >> ~/.bashrc
 
+mkdir -p ~/.config/fish/conf.d
+cat > ~/.config/fish/conf.d/ubuntu-setup.fish <<'EOF'
+if status is-interactive
+    set -l ubuntu_setup_fish "$HOME/Desktop/ubuntu-setup/.fishrc"
+    if test -r "$ubuntu_setup_fish"
+        source "$ubuntu_setup_fish"
+    end
+end
+EOF
+
 # ===========================
 
 # vscode as default text editor

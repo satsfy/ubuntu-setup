@@ -310,3 +310,7 @@ move_from_remote() {
 }
 
 alias push="git add .; git commit -m \"$(date)\"; git push origin master || git push origin main"
+
+find_in_changes() {
+  git diff --no-prefix | awk '/^diff --git/{ file=$NF } /^[\+\-].*$1/{ print file": "$0 }' | grep -v '^[ab]/'
+}

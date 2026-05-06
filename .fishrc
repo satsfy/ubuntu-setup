@@ -1,0 +1,378 @@
+set -l ubuntu_setup_dir (dirname (status --current-filename))
+
+if test -r "$ubuntu_setup_dir/secrets/.fishrc"
+    source "$ubuntu_setup_dir/secrets/.fishrc"
+end
+
+fish_add_path --prepend "$HOME/.cargo/bin" /usr/local/go/bin "$HOME/go/bin" "$HOME/.opencode/bin"
+
+set -gx NVM_DIR "$HOME/.nvm"
+for node_bin in "$NVM_DIR"/versions/node/*/bin
+    if test -d "$node_bin"
+        fish_add_path --prepend "$node_bin"
+    end
+end
+
+set -gx CODEX_HOME "$HOME/.config/codex"
+set -gx OPENCODE_ENABLE_EXA 1
+
+alias pbcopy "xclip -selection clipboard"
+alias pbpaste "xclip -selection clipboard -o"
+alias ls "ls --color=auto"
+alias grep "grep --color=auto"
+alias fgrep "fgrep --color=auto"
+alias egrep "egrep --color=auto"
+
+abbr -a ll "ls -alF"
+abbr -a la "ls -A"
+abbr -a l "ls -CF"
+
+function alert
+    set -l last_status $status
+    set -l icon terminal
+    if test "$last_status" -ne 0
+        set icon error
+    end
+
+    notify-send --urgency=low -i "$icon" (history --max=1)
+end
+
+function gh-branch
+    set -l input "$argv[1]"
+
+    if test -z "$input"
+        echo "usage: gh-branch <.../pull/N or .../pulls/N or .../tree/branch>" >&2
+        return 1
+    end
+
+    set -l repo_url (printf "%s\n" "$input" | sed 's|/pulls/.*||; s|/pull/.*||; s|/tree/.*||; s|\.git$||')
+
+    if string match -q "*/pulls/*" -- "$input"
+        set -l pr_number (printf "%s\n" "$input" | sed -E 's|.*/pulls/([0-9]+).*|\1|')
+        set -l target "pr-$pr_number"
+        git fetch "$repo_url" "refs/pull/$pr_number/head"; or return
+        git switch -C "$target" FETCH_HEAD
+    else if string match -q "*/pull/*" -- "$input"
+        set -l pr_number (printf "%s\n" "$input" | sed -E 's|.*/pull/([0-9]+).*|\1|')
+        set -l target "pr-$pr_number"
+        git fetch "$repo_url" "pull/$pr_number/head"; or return
+        git switch -C "$target" FETCH_HEAD
+    else
+        set -l branch (printf "%s\n" "$input" | sed 's|.*/tree/||')
+        git fetch "$repo_url" "$branch"; or return
+        git switch -C "$branch" FETCH_HEAD
+    end
+end
+
+function gh-get-hist
+    set -l base "$argv[1]"
+
+    if test -z "$base"
+        for candidate in upstream/master upstream/main origin/master origin/main
+            if git show-ref --verify --quiet "refs/remotes/$candidate"
+                echo "Using $candidate as base ref." >&2
+                set base "$candidate"
+                break
+            end
+        end
+
+        if test -z "$base"
+            echo "No upstream/origin master/main found. Please specify a base ref: gh-get-hist <base-ref>" >&2
+            return 1
+        end
+    end
+
+    git format-patch --stdout "$base..HEAD"
+end
+
+function gh-get-folder-diff
+    git diff --no-index (mktemp -d) "$argv[1]"
+end
+
+function act-logs
+    act -W .github/workflows/rust.yaml --pull=false --concurrent-jobs 3 --json | jq -r '.message'
+end
+
+function ci
+    set -l output_dir "."
+    set -l save_log 1
+    set -l workflow all
+    set -l event pull_request
+    set -l jobs 1
+    set -l act_args
+    set -l ci_status 0
+
+    while test (count $argv) -gt 0
+        switch "$argv[1]"
+            case -o --output-dir
+                if test (count $argv) -lt 2
+                    echo "ci: missing value for $argv[1]" >&2
+                    return 2
+                end
+                set output_dir "$argv[2]"
+                set -e argv[1]
+                set -e argv[1]
+            case -q --no-log-file
+                set save_log 0
+                set -e argv[1]
+            case -w --workflow
+                if test (count $argv) -lt 2
+                    echo "ci: missing value for $argv[1]" >&2
+                    return 2
+                end
+                set workflow "$argv[2]"
+                set -e argv[1]
+                set -e argv[1]
+            case -e --event
+                if test (count $argv) -lt 2
+                    echo "ci: missing value for $argv[1]" >&2
+                    return 2
+                end
+                set event "$argv[2]"
+                set -e argv[1]
+                set -e argv[1]
+            case -j --jobs
+                if test (count $argv) -lt 2
+                    echo "ci: missing value for $argv[1]" >&2
+                    return 2
+                end
+                set jobs "$argv[2]"
+                set -e argv[1]
+                set -e argv[1]
+            case -h --help
+                printf "%s\n" \
+                    "Usage: ci [options] [-- <extra act args>]" \
+                    "" \
+                    "Run act for rust CI with optional log saving." \
+                    "" \
+                    "Options:" \
+                    "  -o, --output-dir DIR    Folder where log file is saved (default: .)" \
+                    "  -q, --no-log-file       Do not save run output to a log file" \
+                    "  -w, --workflow PATTERN  Workflow file or \"all\" for all workflows (default: all)" \
+                    "  -e, --event EVENT       Event name (default: pull_request)" \
+                    "  -j, --jobs N            Concurrent jobs for act (default: 1)" \
+                    "  -h, --help              Show this help" \
+                    "" \
+                    "Examples:" \
+                    "  ci" \
+                    "  ci -w rust.yaml" \
+                    "  ci -o .act-logs" \
+                    "  ci -q" \
+                    "  ci -o .act-logs -- -n"
+                return 0
+            case --
+                set -e argv[1]
+                set act_args $act_args $argv
+                set argv
+            case '*'
+                set act_args $act_args "$argv[1]"
+                set -e argv[1]
+        end
+    end
+
+    set output_dir (string replace -r '^~' "$HOME" -- "$output_dir")
+
+    if test "$workflow" = all
+        set -l workflows (find .github/workflows -maxdepth 1 -type f \( -name "*.yml" -o -name "*.yaml" \) | grep -v README | sort)
+
+        if test (count $workflows) -eq 0
+            echo "ci: no workflow files found in .github/workflows" >&2
+            return 1
+        end
+
+        for wf in $workflows
+            echo "========================================"
+            echo "Running workflow: $wf"
+            echo "========================================"
+
+            if test "$save_log" = 1
+                mkdir -p "$output_dir"; or return 1
+                set -l wf_name (basename "$wf" | sed 's/\.[^.]*$//;s/-/_/g')
+                set -l log_file "$output_dir/ci-$wf_name-"(date +%F_%H-%M-%S)".log"
+
+                act "$event" -W "$wf" \
+                    --pull=false \
+                    --concurrent-jobs "$jobs" \
+                    --log-prefix-job-id \
+                    $act_args \
+                    2>&1 | tee "$log_file"
+
+                set ci_status $pipestatus[1]
+                echo "saved log: $log_file"
+                if test $ci_status -ne 0
+                    echo "warning: workflow failed with status $ci_status"
+                end
+            else
+                act "$event" -W "$wf" \
+                    --pull=false \
+                    --concurrent-jobs "$jobs" \
+                    --log-prefix-job-id \
+                    $act_args
+
+                set ci_status $status
+                if test $ci_status -ne 0
+                    echo "warning: workflow failed with status $ci_status"
+                end
+            end
+        end
+        return 0
+    end
+
+    if test "$save_log" = 1
+        mkdir -p "$output_dir"; or return 1
+        set -l log_file "$output_dir/ci-"(date +%F_%H-%M-%S)".log"
+
+        act "$event" -W "$workflow" \
+            --pull=false \
+            --concurrent-jobs "$jobs" \
+            --log-prefix-job-id \
+            $act_args \
+            2>&1 | tee "$log_file"
+
+        set ci_status $pipestatus[1]
+        echo "saved log: $log_file"
+        return "$ci_status"
+    end
+
+    act "$event" -W "$workflow" \
+        --pull=false \
+        --concurrent-jobs "$jobs" \
+        --log-prefix-job-id \
+        $act_args
+end
+
+function gh-cmp-stashes
+    git show 'stash@{0}:src/primitives/correction.rs' >/tmp/corr0.rs
+    git show 'stash@{2}:src/primitives/correction.rs' >/tmp/corr1.rs
+    code --diff /tmp/corr0.rs /tmp/corr1.rs
+end
+
+function gh-cmp-commits
+    git show 'stash@{0}:src/primitives/correction.rs' >/tmp/corr0.rs
+    git show 'stash@{2}:src/primitives/correction.rs' >/tmp/corr1.rs
+    code --diff /tmp/corr0.rs /tmp/corr1.rs
+end
+
+function gh-checkpoint
+    set -l name "checkpoint: $argv[1]"
+    set -l oid (git stash create "$name")
+    git stash store -m "$name" "$oid"
+end
+
+function move_to_remote
+    set -l remote "$DEV_SERVER"
+    set -l reponame (basename (git rev-parse --show-toplevel))
+    set -l remote_dir "/home/renato/.openclaw/workspace/$reponame"
+    set -l script_dir "$PWD"
+
+    if test -n "$argv[1]"
+        set script_dir "$argv[1]"
+    end
+
+    set script_dir (cd -- "$script_dir"; and pwd)
+
+    if not command -v rsync >/dev/null 2>&1
+        echo "error: rsync is required" >&2
+        return 1
+    end
+
+    if not command -v ssh >/dev/null 2>&1
+        echo "error: ssh is required" >&2
+        return 1
+    end
+
+    sshpass -e ssh -T "$remote" "mkdir -p '$remote_dir'"; or return 1
+
+    sshpass -e rsync -az --itemize-changes \
+        --exclude 'target/' \
+        --exclude 'mutants.out/' \
+        --exclude 'mutants.out.old/' \
+        "$script_dir/" "$remote:$remote_dir/"; or return 1
+
+    echo "Copy complete: $script_dir -> $remote:$remote_dir"
+end
+
+function move_from_remote
+    set -l remote "$DEV_SERVER"
+    set -l reponame (basename (git rev-parse --show-toplevel))
+    set -l remote_dir "/home/renato/.openclaw/workspace/$reponame"
+    set -l script_dir "$PWD"
+
+    if test -n "$argv[1]"
+        set script_dir "$argv[1]"
+    end
+
+    if not command -v rsync >/dev/null 2>&1
+        echo "error: rsync is required" >&2
+        return 1
+    end
+
+    if not command -v ssh >/dev/null 2>&1
+        echo "error: ssh is required" >&2
+        return 1
+    end
+
+    mkdir -p -- "$script_dir"; or return 1
+    set script_dir (cd -- "$script_dir"; and pwd)
+
+    sshpass -e ssh -T "$remote" "test -d '$remote_dir'"
+    or begin
+        echo "error: remote directory not found: $remote:$remote_dir" >&2
+        return 1
+    end
+
+    sshpass -e rsync -az --itemize-changes \
+        --exclude 'target/' \
+        --exclude 'mutants.out/' \
+        --exclude 'mutants.out.old/' \
+        "$remote:$remote_dir/" "$script_dir/"; or return 1
+
+    echo "Copy complete: $remote:$remote_dir -> $script_dir"
+end
+
+function push
+    git add .
+    git commit -m (date)
+    git push origin master; or git push origin main
+end
+
+function nvim
+    if test -n "$NVIM"; and test (count $argv) -gt 0; and command -v nvr >/dev/null 2>&1
+        nvr --servername "$NVIM" --remote $argv
+        return $status
+    end
+
+    command nvim $argv
+end
+
+function _aichat_fish
+    set -l old (commandline)
+    if test -n "$old"
+        echo -n "..."
+        commandline -f repaint
+        commandline (aichat -e "$old")
+    end
+end
+
+if type -q aichat
+    bind \ee _aichat_fish
+end
+
+function find_in_changes
+    if test (count $argv) -lt 1
+        echo "usage: find_in_changes <pattern>" >&2
+        return 1
+    end
+
+    set -l pattern "$argv[1]"
+    git diff --no-prefix \
+    | awk -v pat="$pattern" '
+        /^diff --git / { file=$4; sub(/^b\//, "", file); next }
+        /^@@/ { next }
+        /^[+-]/ {
+            if ($0 ~ pat) {
+                print file ": " $0
+            }
+        }
+    '
+end
